@@ -1,6 +1,5 @@
 <template>
   <div class="app">
-    <!-- ── Top Bar ──────────────────────────────────────────────────── -->
     <header class="topbar">
       <div class="topbar__brand">
         <span class="topbar__icon">📈</span>
@@ -12,28 +11,24 @@
       </div>
     </header>
 
-    <!-- ── Main Content ────────────────────────────────────────────── -->
     <main class="main">
-      <!-- Left column: ticker + wallet + position + indicators -->
       <aside class="sidebar">
         <PriceTicker />
         <WalletBalance />
         <IndicatorsPanel />
         <PositionPanel />
+        <RobotConsole />
       </aside>
 
-      <!-- Center column: chart -->
       <section class="chart-area">
         <CandleChart :on-change-timeframe="changeTimeframe" />
       </section>
     </main>
 
-    <!-- ── History ─────────────────────────────────────────────────── -->
     <footer class="history-bar">
       <TradeHistory />
     </footer>
 
-    <!-- ── Error Toast ─────────────────────────────────────────────── -->
     <Transition name="toast">
       <div v-if="store.lastError" class="toast toast--error">
         <span class="toast__icon">⚠</span>
@@ -54,6 +49,7 @@ import PositionPanel from './components/PositionPanel.vue'
 import CandleChart from './components/CandleChart.vue'
 import TradeHistory from './components/TradeHistory.vue'
 import PanicButton from './components/PanicButton.vue'
+import RobotConsole from './components/RobotConsole.vue'
 
 const store = useTradingStore()
 const { panicClose, changeTimeframe } = useSocket()
@@ -67,7 +63,6 @@ const { panicClose, changeTimeframe } = useSocket()
   background: var(--bg-primary);
 }
 
-/* ── Top Bar ──────────────────────────────────────────────────────────── */
 .topbar {
   display: flex;
   align-items: center;
@@ -104,7 +99,6 @@ const { panicClose, changeTimeframe } = useSocket()
   gap: 16px;
 }
 
-/* ── Main ─────────────────────────────────────────────────────────────── */
 .main {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -128,7 +122,6 @@ const { panicClose, changeTimeframe } = useSocket()
   min-height: 0;
 }
 
-/* ── History ──────────────────────────────────────────────────────────── */
 .history-bar {
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
@@ -136,7 +129,6 @@ const { panicClose, changeTimeframe } = useSocket()
   overflow-y: auto;
 }
 
-/* ── Error Toast ──────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
   bottom: 24px;
@@ -159,7 +151,6 @@ const { panicClose, changeTimeframe } = useSocket()
 
 .toast__icon { font-size: 16px; }
 
-/* ── Toast transition ──────────────────────────────────────────────────── */
 .toast-enter-active, .toast-leave-active {
   transition: opacity 0.3s, transform 0.3s;
 }

@@ -7,12 +7,12 @@ class PriceActionEngine {
     this.candles = [];
 
     this.state = {
-      isAssetOpen:      false,
-      currentPosition:  null,
-      lastOrderTime:    null,
+      isAssetOpen:       false,
+      currentPosition:   null,
+      lastOrderTime:     null,
       lastDetectedSetup: null,
-      lastLogTime:      0,    // Throttling for logs
-      currentCandleTime: 0,   // To track "new candle" for scanning logs
+      lastLogTime:       0,
+      currentCandleTime: 0,
     };
 
     this.logger = null;
@@ -31,14 +31,9 @@ class PriceActionEngine {
     console.log(`[Strategy] Histórico carregado: ${this.candles.length} velas.`);
   }
 
-  /**
-   * Retorna histórico completo enriquecido com indicadores calculados.
-   * Essencial para o frontend desenhar as linhas no carregamento inicial.
-   */
   getCandlesWithIndicators() {
     const closes = this.candles.map((c) => c.close);
-    
-    // Helpers de cálculo seguro
+
     const calc = (Method, period) => {
       if (closes.length < period) return [];
       return Method.calculate({ period, values: closes });
@@ -50,10 +45,9 @@ class PriceActionEngine {
 
     return this.candles.map((c, i) => ({
       ...c,
-      // Alinha o resultado do indicador com o índice da vela correspondente
-      sma9:   sma9Values[i - 8]   ?? null, // Period 9 offset
-      ema21:  ema21Values[i - 20] ?? null, // Period 21 offset
-      ema200: ema200Values[i - 199] ?? null // Period 200 offset
+      sma9:   sma9Values[i - 8]     ?? null,
+      ema21:  ema21Values[i - 20]   ?? null,
+      ema200: ema200Values[i - 199] ?? null,
     }));
   }
 
@@ -72,10 +66,9 @@ class PriceActionEngine {
     if (last && last.time === candle.time) {
       this.candles[this.candles.length - 1] = candle;
     } else {
-      // New candle detected
       this.candles.push(candle);
-      this.state.currentCandleTime = candle.time; 
-      this.state.scanLogged = false; // Reset log flag for new candle
+      this.state.currentCandleTime = candle.time;
+      this.state.scanLogged = false;
     }
 
     if (isClosed && this.candles.length > MAX_CANDLE_HISTORY) {
@@ -121,8 +114,8 @@ class PriceActionEngine {
 
   _isIgnitionBar(candle, history, lookback = 20) {
     if (this._bodyRatio(candle) < 0.80) return false;
-    const amp     = this._amp(candle);
-    const window  = history.slice(-lookback);
+    const amp    = this._amp(candle);
+    const window = history.slice(-lookback);
     if (window.length < Math.min(lookback, 10)) return false;
     return window.every((c) => this._amp(c) < amp);
   }
@@ -140,10 +133,9 @@ class PriceActionEngine {
   }
 
   _trendBias() {
-    // Precedência atualizada: Price vs MME 21
     const lastClose = this.candles[this.candles.length - 1]?.close;
-    const ema21 = this.getEMA(21);
-    
+    const ema21     = this.getEMA(21);
+
     if (!lastClose || !ema21) return 'NEUTRAL';
     return lastClose > ema21 ? 'UP' : 'DOWN';
   }
@@ -163,9 +155,8 @@ class PriceActionEngine {
     if (!this._isIgnitionBar(signal, history)) return null;
     if (!this._isBullish(signal)) return null;
 
-    // Volume check for logging
     const vol20 = history.slice(-20).reduce((sum, c) => sum + c.volume, 0) / 20;
-    const volP = ((signal.volume - vol20) / vol20) * 100;
+    const volP  = ((signal.volume - vol20) / vol20) * 100;
 
     if (price <= signal.high) return null;
 
@@ -189,8 +180,8 @@ class PriceActionEngine {
   _checkRLE(price, closed) {
     if (closed.length < 12) return null;
 
-    const breakout       = closed[closed.length - 1];
-    const consolidation  = closed.slice(-9, -1);
+    const breakout      = closed[closed.length - 1];
+    const consolidation = closed.slice(-9, -1);
 
     if (consolidation.length < 8) return null;
 
@@ -228,7 +219,6 @@ class PriceActionEngine {
     const sma9  = this.getSMA(9);
     const ema21 = this.getEMA(21);
     if (!sma9 || !ema21) return null;
-    // Setup 123 context usually implies trend, kept generic here or based on TrendBias
 
     const recent = closed.slice(-5);
 
@@ -343,8 +333,8 @@ class PriceActionEngine {
   evaluateEntry(currentPrice, minCooldownMs) {
     const none = (reason) => ({ signal: null, reason, setup: null });
 
-    if (this.candles.length < 22)  return none('Histórico insuficiente (mín. 22 velas)');
-    if (this.state.isAssetOpen)    return none('Posição já aberta — entradas bloqueadas');
+    if (this.candles.length < 22) return none('Histórico insuficiente (mín. 22 velas)');
+    if (this.state.isAssetOpen)   return none('Posição já aberta — entradas bloqueadas');
 
     if (this.state.lastOrderTime) {
       const elapsed = Date.now() - this.state.lastOrderTime;
@@ -357,11 +347,9 @@ class PriceActionEngine {
     const closedCandles = this.candles.slice(0, -1);
     if (closedCandles.length < 5) return none('Poucos candles fechados');
 
-    // 1. Configuração Final das Médias
-    const ema21  = this.getEMA(21);  // MME 21
-    const ema200 = this.getEMA(200); // MME 200
+    const ema21  = this.getEMA(21);
+    const ema200 = this.getEMA(200);
 
-    // 2. Logs de Varredura (A cada novo candle)
     if (!this.state.scanLogged && ema21) {
       const rel = currentPrice > ema21 ? 'ACIMA' : 'ABAIXO';
       const dir = currentPrice > ema21 ? 'COMPRA' : 'VENDA';
@@ -369,14 +357,10 @@ class PriceActionEngine {
       this.state.scanLogged = true;
     }
 
-    // 4. Lógica de Precedência: MME 21 como filtro principal
     if (ema21 && currentPrice <= ema21) {
-      // Se estiver abaixo da MME 21, apenas setups de VENDA seriam permitidos.
-      // Como este robô só opera COMPRA, abortamos.
       return none(`Preço abaixo da EMA 21 (${ema21.toFixed(2)}) — somente vendas permitidas`);
     }
 
-    // Avalia setups
     const result =
       this._checkIgnition(currentPrice, closedCandles)  ||
       this._checkRLE(currentPrice, closedCandles)        ||
@@ -386,7 +370,6 @@ class PriceActionEngine {
 
     if (!result) return none('Nenhum setup detectado');
 
-    // 2. Logs de Filtro de Barreira: MME 200 (se existir)
     if (ema200 && ema200 > currentPrice) {
       const distPct = ((ema200 - currentPrice) / currentPrice) * 100;
       if (distPct <= 1.5) {
@@ -441,7 +424,7 @@ class PriceActionEngine {
 
   closePosition() {
     console.log(`[Strategy] Posição fechada (setup: ${this.state.currentPosition?.setup ?? '—'}).`);
-    this.state.isAssetOpen    = false;
+    this.state.isAssetOpen     = false;
     this.state.currentPosition = null;
   }
 
@@ -452,9 +435,9 @@ class PriceActionEngine {
       lastCandle,
       candleCount: this.candles.length,
       indicators: {
-        sma9:   this.getSMA(9),   // SMA 9
-        ema21:  this.getEMA(21),  // EMA 21
-        ema200: this.getEMA(200), // EMA 200
+        sma9:   this.getSMA(9),
+        ema21:  this.getEMA(21),
+        ema200: this.getEMA(200),
         rsi14:  this.getRSI(14),
         trend:  this._trendBias(),
       },

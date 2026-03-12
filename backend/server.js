@@ -36,7 +36,7 @@ app.get('/candles', (_req, res) => {
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Cliente conectado: ${socket.id}`);
 
-  socket.emit('snapshot', strategy.getSnapshot());
+  socket.emit('snapshot', { ...strategy.getSnapshot(), interval: config.trading.interval });
 
   brokerService.getWalletBalance(config.trading.symbol)
     .then((balance) => socket.emit('walletBalance', balance))
@@ -69,7 +69,7 @@ io.on('connection', (socket) => {
       strategy.loadHistory(candles);
       marketMonitor.reconnectWithInterval(interval);
       broadcast('timeframeChanged', { interval, time: Date.now() });
-      broadcast('snapshot', strategy.getSnapshot());
+      broadcast('snapshot', { ...strategy.getSnapshot(), interval: config.trading.interval });
     } catch (err) {
       console.error('[Server] Erro ao trocar timeframe:', err.message);
       socket.emit('error', { message: err.message, time: Date.now() });
@@ -85,12 +85,7 @@ function broadcast(event, data) {
   io.emit(event, data);
 }
 
-/**
- * 2. Sistema de Logs de Decisão
- * Envia logs estruturados para o console do frontend.
- */
 function broadcastLog(message, type = 'info') {
-  // Types: info, warning, success, error
   io.emit('log', { message, type, timestamp: Date.now() });
 }
 
@@ -105,8 +100,7 @@ async function calculatePositionSize(entryPrice, stopLossPrice) {
     const stopDistance = entryPrice - stopLossPrice;
     if (stopDistance <= 0) return config.trading.quantity;
 
-    const rawQty = riskAmount / stopDistance;
-
+    const rawQty    = riskAmount / stopDistance;
     const cappedQty = Math.min(rawQty, config.trading.quantity);
 
     console.log(
@@ -114,7 +108,6 @@ async function calculatePositionSize(entryPrice, stopLossPrice) {
       `${riskAmount.toFixed(2)} USDT | stop ${stopDistance.toFixed(2)} | qty: ${cappedQty.toFixed(6)}`
     );
 
-    // Log de Gestão
     broadcastLog(`Calculando lote: Risco de ${config.trading.riskPercent}% do saldo (${usdtFree.toFixed(2)} USDT). Tamanho da ordem: ${cappedQty.toFixed(5)}.`, 'info');
 
     return cappedQty;
@@ -163,7 +156,7 @@ async function handleBuySignal(currentPrice, entryResult) {
       time:       Date.now(),
     });
 
-    broadcast('snapshot', strategy.getSnapshot());
+    broadcast('snapshot', { ...strategy.getSnapshot(), interval: config.trading.interval });
 
     brokerService.getWalletBalance(config.trading.symbol)
       .then((balance) => broadcast('walletBalance', balance))
@@ -190,15 +183,15 @@ async function handleClosePosition(reason) {
     strategy.closePosition();
 
     broadcast('order', {
-      type: 'CLOSE',
-      side: 'SELL',
+      type:     'CLOSE',
+      side:     'SELL',
       reason,
       quantity: position.quantity,
-      orderId: order.orderId,
-      time: Date.now(),
+      orderId:  order.orderId,
+      time:     Date.now(),
     });
 
-    broadcast('snapshot', strategy.getSnapshot());
+    broadcast('snapshot', { ...strategy.getSnapshot(), interval: config.trading.interval });
 
     brokerService.getWalletBalance(config.trading.symbol)
       .then((balance) => broadcast('walletBalance', balance))
@@ -231,9 +224,11 @@ marketMonitor.onTick((tick) => {
 marketMonitor.onCandle((candle, isClosed) => {
   strategy.updateCandle(candle, isClosed);
 
+  broadcast('liveCandle', candle);
+
   if (isClosed) {
     broadcast('candleClosed', candle);
-    broadcast('snapshot', strategy.getSnapshot());
+    broadcast('snapshot', { ...strategy.getSnapshot(), interval: config.trading.interval });
   }
 });
 

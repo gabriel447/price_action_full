@@ -18,14 +18,14 @@ export const useTradingStore = defineStore('trading', () => {
   const indicators = ref({ sma9: null, ema21: null, ema200: null, rsi14: null, trend: 'NEUTRAL' })
 
   const emaHistory = ref([])
+  const liveCandle = ref(null)
 
-  const consoleLogs = ref([]) // Histórico de logs do Robô
+  const consoleLogs = ref([])
   const tradeHistory = ref([])
 
-  // ─── Feedback Audio/Visual ────────────────────────────────────────────────
   const soundEnabled = ref(false)
-  const lastAudioEvent = ref(null) // { type: 'setup'|'execution'|'alert', id: timestamp }
-  const orderFlash = ref(false)    // Trigger visual para execução
+  const lastAudioEvent = ref(null)
+  const orderFlash = ref(false)
 
   const walletBalance = ref(null)
 
@@ -49,7 +49,8 @@ export const useTradingStore = defineStore('trading', () => {
   })
 
   function handleSnapshot(data) {
-    const { state, indicators: ind } = data
+    const { state, indicators: ind, interval } = data
+    if (interval) currentTimeframe.value = interval
 
     isPositionOpen.value = state.isAssetOpen
     position.value = state.currentPosition
@@ -91,18 +92,16 @@ export const useTradingStore = defineStore('trading', () => {
       const res = await fetch(`/candles?_t=${Date.now()}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      
-      // Popula velas
+
       candles.value = data.map(c => ({
         time: c.time,
-        open: c.open, 
-        high: c.high, 
-        low: c.low, 
+        open: c.open,
+        high: c.high,
+        low: c.low,
         close: c.close,
         volume: c.volume
       }))
 
-      // Popula histórico de médias para as linhas do gráfico
       emaHistory.value = data.map(c => ({
         time: c.time,
         sma9: c.sma9,
@@ -118,9 +117,12 @@ export const useTradingStore = defineStore('trading', () => {
     tradeHistory.value.unshift({ ...order, id: `${order.orderId}-${order.time}` })
     if (tradeHistory.value.length > 200) tradeHistory.value.pop()
 
-    // Som de execução e Flash visual
     triggerSound('execution')
     triggerOrderFlash()
+  }
+
+  function handleLiveCandle(candle) {
+    liveCandle.value = candle
   }
 
   function handleWsStatus(data) {
@@ -158,13 +160,10 @@ export const useTradingStore = defineStore('trading', () => {
     consoleLogs.value.push(log)
     if (consoleLogs.value.length > 20) consoleLogs.value.shift()
 
-    // Detecção de Setup baseada em palavras-chave dos logs do strategy.js
     if (log.type === 'success' || (log.type === 'info' && (log.message.includes('detectado') || log.message.includes('identificado')))) {
       triggerSound('setup')
     }
   }
-
-  // ─── Actions de Feedback ──────────────────────────────────────────────────
 
   function toggleSound() {
     soundEnabled.value = !soundEnabled.value
@@ -192,6 +191,7 @@ export const useTradingStore = defineStore('trading', () => {
     candles,
     indicators,
     emaHistory,
+    liveCandle,
     consoleLogs,
     tradeHistory,
     soundEnabled,
@@ -209,6 +209,7 @@ export const useTradingStore = defineStore('trading', () => {
     handleCandleClosed,
     loadHistoricalCandles,
     handleOrder,
+    handleLiveCandle,
     handleWsStatus,
     setSocketConnected,
     handleWalletBalance,

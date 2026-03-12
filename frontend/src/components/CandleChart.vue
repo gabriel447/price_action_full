@@ -3,29 +3,10 @@
     <div class="chart-header">
       <div class="chart-header__left">
         <span class="chart-header__title">{{ symbol }}</span>
-
-        <!-- Timeframe switcher -->
-        <div class="tf-switcher">
-          <button
-            v-for="tf in timeframes"
-            :key="tf"
-            class="tf-btn"
-            :class="{
-              'tf-btn--active':    store.currentTimeframe === tf,
-              'tf-btn--switching': store.timeframeSwitching && store.currentTimeframe !== tf,
-            }"
-            :disabled="store.timeframeSwitching"
-            @click="onChangeTimeframe(tf)"
-          >
-            {{ tf }}
-          </button>
-        </div>
+        <span class="chart-header__tf">{{ store.currentTimeframe }}</span>
       </div>
 
       <div class="chart-header__right">
-        <span v-if="store.timeframeSwitching" class="chart-header__status">
-          Carregando...
-        </span>
         <span class="chart-header__count text-muted mono">{{ store.candles.length }} velas</span>
         <span class="chart-header__tz text-muted">UTC</span>
       </div>
@@ -36,35 +17,28 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, inject } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { createChart } from 'lightweight-charts'
 import { useTradingStore } from '../stores/trading'
 
-const props = defineProps({
-  onChangeTimeframe: {
-    type: Function,
-    required: true,
-  },
+defineProps({
+  onChangeTimeframe: { type: Function, required: true },
 })
 
 const store = useTradingStore()
 const chartEl = ref(null)
 
-const symbol    = import.meta.env.VITE_SYMBOL   ?? 'BTC/USDT'
-const timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '4h']
+const symbol = import.meta.env.VITE_SYMBOL ?? 'BTC/USDT'
 
 let chart        = null
 let candleSeries = null
 let ema9Series   = null
 let ema21Series  = null
+let ema200Series = null
 let rafId        = null
 
 let pendingCandle = null
 let pendingEma    = null
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Chart init
-// ─────────────────────────────────────────────────────────────────────────────
 
 function initChart() {
   if (!chartEl.value) return
@@ -83,10 +57,10 @@ function initChart() {
     crosshair: { mode: 1 },
     rightPriceScale: { borderColor: '#2a2a2f' },
     timeScale: {
-      borderColor:     '#2a2a2f',
-      timeVisible:     true,
-      secondsVisible:  false,
-      // Force UTC display via custom tick formatter
+      borderColor:    '#2a2a2f',
+      timeVisible:    true,
+      secondsVisible: false,
+      barSpacing:     10,
       tickMarkFormatter: (timeAsUnixSeconds) => {
         const d = new Date(timeAsUnixSeconds * 1000)
         const hh = String(d.getUTCHours()).padStart(2, '0')
@@ -95,12 +69,10 @@ function initChart() {
       },
     },
     localization: {
-      // Full datetime in UTC shown in the crosshair label
       timeFormatter: (timeAsUnixSeconds) => {
         const d = new Date(timeAsUnixSeconds * 1000)
         return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
       },
-      // Price formatter — crypto precision (up to 8 decimals, strip trailing zeros)
       priceFormatter: (price) => {
         if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         if (price >= 1)    return price.toFixed(4)
@@ -114,38 +86,44 @@ function initChart() {
     downColor:       '#ff3d5a',
     borderUpColor:   '#00e676',
     borderDownColor: '#ff3d5a',
-    wickUpColor:     '#00e676',
-    wickDownColor:   '#ff3d5a',
+    wickUpColor:     '#4CAF50',
+    wickDownColor:   '#e53935',
   })
 
   ema9Series = chart.addLineSeries({
-    color:            '#7c4dff',
-    lineWidth:        1,
+    color:            '#E040FB',
+    lineWidth:        2,
     priceLineVisible: false,
     lastValueVisible: true,
-    title:            'EMA9',
+    title:            'SMA9',
   })
 
   ema21Series = chart.addLineSeries({
-    color:            '#ffab00',
-    lineWidth:        1,
+    color:            '#26C6DA',
+    lineWidth:        2,
     priceLineVisible: false,
     lastValueVisible: true,
     title:            'EMA21',
   })
+
+  ema200Series = chart.addLineSeries({
+    color:            '#FFA726',
+    lineWidth:        2,
+    priceLineVisible: false,
+    lastValueVisible: true,
+    title:            'EMA200',
+  })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Data helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Binance timestamps are in ms; lightweight-charts needs seconds. */
 function toChartCandle(c) {
+  const bodyLow  = Math.min(c.open, c.close)
+  const bodyHigh = Math.max(c.open, c.close)
+  const maxWick  = bodyLow * 0.08
   return {
     time:  Math.floor(c.time / 1000),
     open:  c.open,
-    high:  c.high,
-    low:   c.low,
+    high:  Math.min(c.high, bodyHigh + maxWick),
+    low:   Math.max(c.low,  bodyLow  - maxWick),
     close: c.close,
   }
 }
@@ -156,25 +134,23 @@ function loadInitialData(candles) {
   const chartData = [...candles].map(toChartCandle).sort((a, b) => a.time - b.time)
   candleSeries.setData(chartData)
 
-  const ema9Data  = store.emaHistory.filter((e) => e.ema9  !== null).map((e) => ({ time: Math.floor(e.time / 1000), value: e.ema9  }))
-  const ema21Data = store.emaHistory.filter((e) => e.ema21 !== null).map((e) => ({ time: Math.floor(e.time / 1000), value: e.ema21 }))
-  if (ema9Data.length)  ema9Series.setData(ema9Data)
-  if (ema21Data.length) ema21Series.setData(ema21Data)
+  const ema9Data   = store.emaHistory.filter((e) => e.sma9   != null).map((e) => ({ time: Math.floor(e.time / 1000), value: e.sma9   }))
+  const ema21Data  = store.emaHistory.filter((e) => e.ema21  != null).map((e) => ({ time: Math.floor(e.time / 1000), value: e.ema21  }))
+  const ema200Data = store.emaHistory.filter((e) => e.ema200 != null).map((e) => ({ time: Math.floor(e.time / 1000), value: e.ema200 }))
+  if (ema9Data.length)   ema9Series.setData(ema9Data)
+  if (ema21Data.length)  ema21Series.setData(ema21Data)
+  if (ema200Data.length) ema200Series.setData(ema200Data)
 
-  chart.timeScale().fitContent()
+  chart.timeScale().scrollToRealTime()
 }
 
-/** Clears all chart series — called when timeframe switches. */
 function clearChart() {
   if (!candleSeries) return
   candleSeries.setData([])
   ema9Series.setData([])
   ema21Series.setData([])
+  ema200Series.setData([])
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// rAF-batched updates
-// ─────────────────────────────────────────────────────────────────────────────
 
 function scheduleUpdate(candle, ema) {
   if (candle) pendingCandle = candle
@@ -194,28 +170,22 @@ function flushUpdates() {
   }
   if (pendingEma) {
     const t = Math.floor(pendingEma.time / 1000)
-    if (pendingEma.ema9  !== null) ema9Series.update({ time: t, value: pendingEma.ema9  })
-    if (pendingEma.ema21 !== null) ema21Series.update({ time: t, value: pendingEma.ema21 })
+    if (pendingEma.sma9   != null) ema9Series.update({ time: t, value: pendingEma.sma9   })
+    if (pendingEma.ema21  != null) ema21Series.update({ time: t, value: pendingEma.ema21  })
+    if (pendingEma.ema200 != null) ema200Series.update({ time: t, value: pendingEma.ema200 })
     pendingEma = null
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Watchers
-// ─────────────────────────────────────────────────────────────────────────────
-
-// One-time initial load
-const stopWatchCandles = watch(
+watch(
   () => store.candles.length,
   (len, prevLen) => {
-    if (len > 0 && prevLen === 0) {
+    if (len > 0 && prevLen === 0 && candleSeries) {
       loadInitialData(store.candles)
-      stopWatchCandles()
     }
   }
 )
 
-// Reload when timeframe changes (candles array is reset by store)
 watch(
   () => store.timeframeSwitching,
   (switching) => {
@@ -223,27 +193,15 @@ watch(
   }
 )
 
-// Reload when new candle batch arrives after timeframe switch
-watch(
-  () => store.candles.length,
-  (len) => {
-    if (len > 0 && !store.timeframeSwitching && candleSeries) {
-      const seriesData = candleSeries.data ? null : null // check if empty — reload
-      loadInitialData(store.candles)
-    }
-  }
-)
-
-// New closed candle
 watch(
   () => store.candles[store.candles.length - 1],
-  (newCandle) => {
+  (newCandle, prevCandle) => {
     if (!newCandle || !candleSeries || store.timeframeSwitching) return
+    if (prevCandle && newCandle.time === prevCandle.time) return
     scheduleUpdate(newCandle, null)
   }
 )
 
-// New EMA data
 watch(
   () => store.emaHistory.length,
   () => {
@@ -253,20 +211,13 @@ watch(
   }
 )
 
-// Live price tick updates open candle
 watch(
-  () => store.currentPrice,
-  (price) => {
-    if (!price || store.candles.length === 0 || !candleSeries || store.timeframeSwitching) return
-    const last = store.candles[store.candles.length - 1]
-    if (!last) return
-    scheduleUpdate({ ...last, close: price }, null)
+  () => store.liveCandle,
+  (candle) => {
+    if (!candle || !candleSeries || store.timeframeSwitching) return
+    scheduleUpdate(candle, null)
   }
 )
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Resize
-// ─────────────────────────────────────────────────────────────────────────────
 
 let resizeObserver = null
 
@@ -275,10 +226,6 @@ function handleResize(entries) {
   const { width, height } = entries[0].contentRect
   chart.applyOptions({ width, height })
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
 
 onMounted(() => {
   initChart()
@@ -343,52 +290,15 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-.chart-header__status {
-  font-size: 11px;
-  color: var(--warning);
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
-/* ── Timeframe switcher ──────────────────────────────────────────────────── */
-.tf-switcher {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.tf-btn {
-  padding: 3px 8px;
+.chart-header__tf {
+  background: var(--accent-dim, rgba(124, 77, 255, 0.15));
+  border: 1px solid var(--accent, #7c4dff);
   border-radius: 3px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
+  padding: 1px 7px;
   font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  letter-spacing: 0.04em;
-}
-
-.tf-btn:hover:not(:disabled) {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  border-color: var(--border);
-}
-
-.tf-btn--active {
-  background: var(--accent-dim) !important;
-  border-color: var(--accent) !important;
-  color: var(--accent) !important;
-}
-
-.tf-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent, #7c4dff);
 }
 
 .chart-canvas {

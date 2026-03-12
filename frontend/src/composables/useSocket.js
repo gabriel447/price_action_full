@@ -32,6 +32,7 @@ export function useSocket() {
 
     socket.on('snapshot',         (data)   => store.handleSnapshot(data))
     socket.on('tick',             (data)   => store.handleTick(data))
+    socket.on('liveCandle',       (candle) => store.handleLiveCandle(candle))
     socket.on('candleClosed',     (candle) => store.handleCandleClosed(candle))
     socket.on('order',            (order)  => store.handleOrder(order))
     socket.on('wsStatus',         (data)   => store.handleWsStatus(data))

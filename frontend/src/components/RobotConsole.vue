@@ -31,7 +31,6 @@ function fmtTime(ts) {
     return new Date(ts).toLocaleTimeString('pt-BR', { hour12: false })
 }
 
-// Auto-scroll to bottom on new log
 watch(() => store.consoleLogs.length, async () => {
     await nextTick()
     if (bodyRef.value) {
@@ -39,8 +38,6 @@ watch(() => store.consoleLogs.length, async () => {
     }
 })
 
-// ─── Audio Engine (Synth) ─────────────────────────────────────────────────────
-// Usa AudioContext para gerar sons sem depender de arquivos externos
 const AudioContext = window.AudioContext || window.webkitAudioContext
 const audioCtx = new AudioContext()
 
@@ -65,16 +62,13 @@ watch(() => store.lastAudioEvent, (evt) => {
     if (!evt) return
 
     if (evt.type === 'setup') {
-        // Beep duplo (Atenção)
         playTone(880, 'sine', 0.1, 0)
         playTone(880, 'sine', 0.1, 0.15)
     } else if (evt.type === 'execution') {
-        // Acorde Maior ascendente (Sucesso/Caixa)
-        playTone(523.25, 'triangle', 0.1, 0)    // C5
-        playTone(659.25, 'triangle', 0.1, 0.1)  // E5
-        playTone(783.99, 'triangle', 0.3, 0.2)  // G5
+        playTone(523.25, 'triangle', 0.1, 0)
+        playTone(659.25, 'triangle', 0.1, 0.1)
+        playTone(783.99, 'triangle', 0.3, 0.2)
     } else if (evt.type === 'alert') {
-        // Buzz grave (Erro)
         playTone(150, 'sawtooth', 0.4, 0)
     }
 })
@@ -138,7 +132,6 @@ watch(() => store.lastAudioEvent, (evt) => {
     color: #00e676;
 }
 
-/* Verde neon */
 .log-line--error {
     color: #ff5252;
 }
